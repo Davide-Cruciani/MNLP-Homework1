@@ -15,21 +15,25 @@ nltk.download('wordnet')
 nltk.download('words')
 
 
-class TextProcessor:
+class ParagraphProcessor:
     def __init__(self, words_path: str|None, lang='english', removed=[], unkonwn='<UNK>'):
         self.lemmatizer = WordNetLemmatizer()
         self.UNK_TOKEN = unkonwn
         self.STOPWORDS = set(stopwords.words(lang))
         self.REMOVED_WORDS = removed
+        self.labels = {
+            'cultural exclusive': 0,
+            'cultural agnostic': 1,
+            'cultural representative': 2
+        }
         for word in removed:
             self.STOPWORDS.add(word)
         self.ENGLISH_WORDS = set(words.words())
-        if words_path is not None:
-            with open(f'{words_path}', 'r') as file:
-                self.features = json.load(file)
-                file.close()
-            self.penalizedWords = self.get_penal_words(self.features)
-        self.noPenalization = words_path is None     
+        with open(f'{words_path}', 'r') as file:
+            self.features = json.load(file)
+            file.close()
+        self.penalizedWords = self.get_penal_words(self.features)     
+    
     def get_penal_words(self, features):
         penalization_words = []
         suspicious_words = defaultdict(list)
@@ -68,14 +72,14 @@ class TextProcessor:
         tokenized_docs = [set(self.tokenize(doc)) for doc in texts]
         all_words = set(word for doc in tokenized_docs for word in doc)
         
-        for word in tqdm.tqdm(all_words):
+        for word in all_words:
             doc_cnt = sum(1 for doc in tokenized_docs if word in doc)
             idf_[word] = math.log((1 + N) / (1 + doc_cnt)) + 1
         return idf_
 
-    def idf_by_category(self, df, column):
+    def idf_by_category(self, df):
         categorical_idf = {}
-        grouped = df.groupby('category')[column].apply(list)
+        grouped = df.groupby('category')['paragraph'].apply(list)
 
         for cat, docs in grouped.items():
             categorical_idf[cat] = self.idf(docs)
@@ -89,10 +93,7 @@ class TextProcessor:
 
         for word, tf_val in tf_.items():
             idf_val = idf_.get(word, 1.0)
-            if self.noPenalization:
-                penalty = 1.0
-            else:
-                penalty = 0.3 if word in self.penalizedWords else 1.0
+            penalty = 0.3 if word in self.penalizedWords else 1.0
             value = tf_val * idf_val * penalty
 
             if word_index is not None and word not in word_index:
@@ -116,16 +117,38 @@ class TextProcessor:
                 vec[unk_idx] += value
         return vec
     
-    def process(self, targetDataset, column):
-        idf_cat = self.idf_by_category(targetDataset, column)
-        tfidfs = []
-
-        for _, row in tqdm.tqdm(targetDataset.iterrows(), total=len(targetDataset), colour='green'):
-            doc = row[column]
+    def process(self, targetDataset,trainDataset):
+        idf_cat = self.idf_by_category(trainDataset)
+        train_tfidfs = []
+        dev_tfidfs = []
+        
+        for _, row in tqdm.tqdm(trainDataset.iterrows(), total=len(trainDataset), colour='green'):
+            doc = row['paragraph']
             cat = row['category']
             tf_ = self.tf(doc)
             idf_ = idf_cat.get(cat, {})
             tfidf = self.tf_idf(tf_, idf_)
-            tfidfs.append(tfidf)
+            train_tfidfs.append(tfidf)
 
-        return tfidfs
+        trainDataset['tf_idf'] = train_tfidfs
+        
+        vocab = sorted(set(word for doc in trainDataset['paragraph'] for word in self.tokenize(doc)))
+        word_index = {word: idx for idx, word in enumerate(vocab)}
+        word_index[self.UNK_TOKEN] = len(word_index)
+        
+        for _, row in tqdm.tqdm(targetDataset.iterrows(), total=len(targetDataset), colour='green'):
+            doc = row['paragraph']
+            cat = row['category']
+            tf_ = self.tf(doc)
+            idf_ = idf_cat.get(cat, {})
+            tfidf = self.tf_idf(tf_, idf_, word_index=word_index)
+            dev_tfidfs.append(tfidf)
+        targetDataset['tf_idf'] = dev_tfidfs
+
+        val_docs = targetDataset['tf_idf'].to_list()
+        
+        dictionary = trainDataset['tf_idf'].to_list()
+        
+        XTrain = np.array([self.vectorize(doc_tfidf, word_index) for doc_tfidf in dictionary])
+        XTarget = np.array([self.vectorize(doc_tfidf, word_index) for doc_tfidf in val_docs])
+        return XTarget, XTrain

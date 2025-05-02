@@ -1,2 +1,3 @@
 from .paragraphAcquisition import getText
-from .textProcessing import TextProcessor
+from .descriptionProcessing import DescriptionProcessor
+from .paragraphProcessor import ParagraphProcessor

@@ -1,0 +1,11 @@
+/dataAnalysis
+/prep/PenaltySVM_OOV.pkl
+/prep/DescriptionSVM.pkl
+/pretrained_models/**
+/new_models/**
+/**/__pycache__
+saver.py
+example.json
+
+.vscode
+.env

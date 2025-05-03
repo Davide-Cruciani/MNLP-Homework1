@@ -116,7 +116,7 @@ class DescriptionProcessor:
                 vec[unk_idx] += value
         return vec
     
-    def process(self, targetDataset,trainDataset):
+    def process(self, testDataset,trainDataset, valDataset):
         idf_cat = self.idf_by_category(trainDataset)
         tfidf = []
 
@@ -135,18 +135,30 @@ class DescriptionProcessor:
         vocab = sorted(set(word for doc in trainDataset['description'] for word in self.tokenize(doc)))
         word_index = {word: idx for idx, word in enumerate(vocab)}
         
-        dev_tfidf = []
-        for _, row in tqdm.tqdm(targetDataset.iterrows(), total=len(targetDataset), colour='green'):
+        val_tfidf = []
+        for _, row in tqdm.tqdm(valDataset.iterrows(), total=len(valDataset), colour='green'):
             doc = row['description']
             cat = row['category']
             enh_tf_ = self.tf(doc)
             enh_idf_ = idf_cat.get(cat, {})
             enh_tfidf = self.tf_idf(enh_tf_, enh_idf_)
-            dev_tfidf.append(enh_tfidf)
-        targetDataset['tf_idf'] = dev_tfidf
-
-        val_docs = targetDataset['tf_idf'].to_list()
+            val_tfidf.append(enh_tfidf)
+        valDataset['tf_idf'] = val_tfidf
         
-        XTarget = np.array([self.vectorize(doc_tfidf, word_index) for doc_tfidf in val_docs])
+        test_tfidf = []
+        for _, row in tqdm.tqdm(testDataset.iterrows(), total=len(testDataset), colour='green'):
+            doc = row['description']
+            cat = row['category']
+            enh_tf_ = self.tf(doc)
+            enh_idf_ = idf_cat.get(cat, {})
+            enh_tfidf = self.tf_idf(enh_tf_, enh_idf_)
+            test_tfidf.append(enh_tfidf)
+        testDataset['tf_idf'] = test_tfidf
+
+        test_docs = testDataset['tf_idf'].to_list()
+        val_docs = valDataset['tf_idf'].to_list()
+        
+        XVal = np.array([self.vectorize(doc_tfidf, word_index) for doc_tfidf in val_docs])
+        XTest = np.array([self.vectorize(doc_tfidf, word_index) for doc_tfidf in test_docs])
         XTrain = np.array([self.vectorize(doc_tfidf, word_index) for doc_tfidf in enh_dict])
-        return XTarget, XTrain
+        return XTest, XTrain, XVal

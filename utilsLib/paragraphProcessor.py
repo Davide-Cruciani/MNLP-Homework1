@@ -117,10 +117,11 @@ class ParagraphProcessor:
                 vec[unk_idx] += value
         return vec
     
-    def process(self, targetDataset,trainDataset):
+    def process(self, testDataset, validDataset, trainDataset):
         idf_cat = self.idf_by_category(trainDataset)
         train_tfidfs = []
-        dev_tfidfs = []
+        test_tfidfs = []
+        val_tfidfs = []
         
         for _, row in tqdm.tqdm(trainDataset.iterrows(), total=len(trainDataset), colour='green'):
             doc = row['paragraph']
@@ -136,19 +137,31 @@ class ParagraphProcessor:
         word_index = {word: idx for idx, word in enumerate(vocab)}
         word_index[self.UNK_TOKEN] = len(word_index)
         
-        for _, row in tqdm.tqdm(targetDataset.iterrows(), total=len(targetDataset), colour='green'):
+        for _, row in tqdm.tqdm(testDataset.iterrows(), total=len(testDataset), colour='green'):
             doc = row['paragraph']
             cat = row['category']
             tf_ = self.tf(doc)
             idf_ = idf_cat.get(cat, {})
             tfidf = self.tf_idf(tf_, idf_, word_index=word_index)
-            dev_tfidfs.append(tfidf)
-        targetDataset['tf_idf'] = dev_tfidfs
+            test_tfidfs.append(tfidf)
+        testDataset['tf_idf'] = test_tfidfs
 
-        val_docs = targetDataset['tf_idf'].to_list()
+        for _, row in tqdm.tqdm(validDataset.iterrows(), total=len(validDataset), colour='green'):
+            doc = row['paragraph']
+            cat = row['category']
+            tf_ = self.tf(doc)
+            idf_ = idf_cat.get(cat, {})
+            tfidf = self.tf_idf(tf_, idf_, word_index=word_index)
+            val_tfidfs.append(tfidf)
+        validDataset['tf_idf'] = val_tfidfs
+
+        test_docs = testDataset['tf_idf'].to_list()
         
         dictionary = trainDataset['tf_idf'].to_list()
         
+        val_docs = validDataset['tf_idf'].to_list()
+        
         XTrain = np.array([self.vectorize(doc_tfidf, word_index) for doc_tfidf in dictionary])
-        XTarget = np.array([self.vectorize(doc_tfidf, word_index) for doc_tfidf in val_docs])
-        return XTarget, XTrain
+        XVal = np.array([self.vectorize(doc_tfidf, word_index) for doc_tfidf in val_docs])
+        XTest = np.array([self.vectorize(doc_tfidf, word_index) for doc_tfidf in test_docs])
+        return XTest, XTrain, XVal

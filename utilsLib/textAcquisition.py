@@ -21,34 +21,29 @@ def getWikiLink(qid, lang='en'):
         print(f"ERROR retrieving Wikipedia link for {qid}: {e}")
         return None
 
-def getParagraph(wikipedia_link, min_chars=200):
+def getParagraphs(wikipedia_link):
     try:
         response = requests.get(wikipedia_link, allow_redirects=True)
         response.raise_for_status()
-        if response.is_redirect:
-            print(f"WARNING: Redirecting... {response.status_code}")
-        soup = BeautifulSoup(response.content, 'html.parser')
 
+        soup = BeautifulSoup(response.content, 'html.parser')
         content = soup.find('div', class_='mw-content-ltr mw-parser-output')
         if not content:
-            return ""
+            return None
 
-        paragraph_text = ""
+        paragraphs = []
         for p in content.find_all('p'):
             text = p.get_text(separator=" ", strip=True)
-            text = re.sub(r'\[\d+\]', '', text)
-            paragraph_text += " " + text
-            if len(paragraph_text) > min_chars:
-                break
+            text = re.sub(r'\[\s*\d+\s*\]', '', text)
+            text = re.sub(r'\s{2,}', ' ', text)
+            if text:
+                paragraphs.append(text)
 
-        return paragraph_text.strip()
+        return "\n\n".join(paragraphs) if paragraphs else None
 
-    except requests.exceptions.RequestException as e:
-        print(f"ERROR fetching paragraph from {wikipedia_link}: {e}")
-        return ""
     except Exception as e:
-        print(f"ERROR parsing content from {wikipedia_link}: {e}")
-        return ""
+        print(f"ERROR! Link {wikipedia_link}: {e}")
+        return None
 
 
 
@@ -56,7 +51,7 @@ def process_item(index, item, df, lang):
     try:
         qid = getWikiCode(item)
         link = getWikiLink(qid, lang)
-        paragraph = getParagraph(link)
+        paragraph = getParagraphs(link)
 
         if not link:
             print(f"WARNING: missing Wikipedia link for QID {qid}")
@@ -72,7 +67,7 @@ def process_item(index, item, df, lang):
         print(f"ERROR processing item {item} (QID: {qid if 'qid' in locals() else 'UNKNOWN'}): {e}")
         return index, df['description'][df['item'] == item].values[0]
 
-def getText(df, lang='en', max_workers=10):
+def downloadText(df, lang='en', max_workers=16):
     results = [None] * len(df)
     items = list(enumerate(df['item']))
 

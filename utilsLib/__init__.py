@@ -1,3 +1,4 @@
 from .paragraphAcquisition import getText
 from .descriptionProcessing import DescriptionProcessor
 from .paragraphProcessor import ParagraphProcessor
+from .textAcquisition import downloadText
